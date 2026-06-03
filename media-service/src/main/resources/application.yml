@@ -1,0 +1,20 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: media-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  s3:
+    endpoint: ${AWS_S3_ENDPOINT:http://localhost:4566} # Defaults to LocalStack for local development
+    bucket: ${AWS_S3_BUCKET:nipun-educational-assets}
+  credentials:
+    access-key: ${AWS_ACCESS_KEY_ID:mock-key}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:mock-secret}
+
+openai:
+  api-key: ${OPENAI_API_KEY:}
