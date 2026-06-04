@@ -43,7 +43,7 @@ public class RAGPipelineService {
     // Index an uploaded lesson plan document
     public void indexLessonPlan(LessonPlanUploadedEvent event) {
         log.info("Processing indexing for lesson plan: {} under tenant: {}", event.getTitle(), event.getTenantId());
-        
+
         try {
             // Retrieve document binary stream (for demo/test, we parse a mock text layout)
             String rawTextContent = simulateDownloadAndParse(event.getDocumentUrl(), event.getTitle());
@@ -62,17 +62,18 @@ public class RAGPipelineService {
             List<Embedding> embeddings = new ArrayList<>();
 
             for (TextSegment segment : segments) {
+                java.util.Map<String, Object> metadata = new java.util.HashMap<>();
+
+                metadata.put("tenantId", event.getTenantId());
+                metadata.put("subjectId", event.getSubjectId().toString());
+                metadata.put("lessonPlanId", event.getLessonPlanId().toString());
+                metadata.put("title", event.getTitle());
+
                 TextSegment enriched = TextSegment.from(
                         segment.text(),
-                        dev.langchain4j.data.document.Metadata.from(
-                                "tenantId", event.getTenantId(),
-                                "subjectId", event.getSubjectId().toString(),
-                                "lessonPlanId", event.getLessonPlanId().toString(),
-                                "title", event.getTitle()
-                        )
-                );
+                        dev.langchain4j.data.document.Metadata.from(metadata));
                 enrichedSegments.add(enriched);
-                
+
                 // Embed
                 Embedding embedding = embeddingModel.embed(enriched).content();
                 embeddings.add(embedding);
@@ -117,7 +118,8 @@ public class RAGPipelineService {
         log.info("Found {} relevant curriculum context segments in Qdrant", matches.size());
 
         // Construct context-enriched Prompt
-        String systemPrompt = "You are a professional educational teaching assistant. Use the following context from the school curriculum and lesson plans to answer the teacher's question accurately.\n" +
+        String systemPrompt = "You are a professional educational teaching assistant. Use the following context from the school curriculum and lesson plans to answer the teacher's question accurately.\n"
+                +
                 "Context:\n" +
                 context + "\n\n" +
                 "Teacher's Question: " + query + "\n\n" +
@@ -125,20 +127,23 @@ public class RAGPipelineService {
 
         // Invoke GPT LLM
         Response<dev.langchain4j.data.message.AiMessage> response = chatLanguageModel.generate(
-                List.of(dev.langchain4j.data.message.UserMessage.from(systemPrompt))
-        );
+                List.of(dev.langchain4j.data.message.UserMessage.from(systemPrompt)));
 
         return response.content().text();
     }
 
     private String simulateDownloadAndParse(String documentUrl, String title) throws Exception {
-        // Here, we simulate Apache Tika parsing an incoming stream (e.g. PDF/DOCX bytes)
+        // Here, we simulate Apache Tika parsing an incoming stream (e.g. PDF/DOCX
+        // bytes)
         String mockDocumentContent = "Lesson Plan Title: " + title + "\n" +
-                "Topic overview: This curriculum node explains standard lesson flows, activities, and evaluation methods.\n" +
-                "Core Objectives: Students will comprehend basic concepts, engage in interactive group activities, and write homework assignments.\n" +
-                "Activity Details: Conduct a 15-minute group quiz where students solve real-world scenario questions.\n" +
+                "Topic overview: This curriculum node explains standard lesson flows, activities, and evaluation methods.\n"
+                +
+                "Core Objectives: Students will comprehend basic concepts, engage in interactive group activities, and write homework assignments.\n"
+                +
+                "Activity Details: Conduct a 15-minute group quiz where students solve real-world scenario questions.\n"
+                +
                 "Homework details: Solve exercises 1 through 10 in the curriculum guide.";
-        
+
         try (InputStream inputStream = new ByteArrayInputStream(mockDocumentContent.getBytes(StandardCharsets.UTF_8))) {
             AutoDetectParser parser = new AutoDetectParser();
             BodyContentHandler handler = new BodyContentHandler(-1);

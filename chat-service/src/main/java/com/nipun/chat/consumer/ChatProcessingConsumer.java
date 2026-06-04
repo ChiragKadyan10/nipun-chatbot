@@ -33,7 +33,7 @@ public class ChatProcessingConsumer {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
     private final WebClient webClient;
-    
+
     private static final String OUTGOING_TOPIC = "outgoing-messages";
     private static final String MEDIA_TOPIC = "media-processing";
     private static final String ANALYTICS_TOPIC = "analytics-events";
@@ -69,7 +69,7 @@ public class ChatProcessingConsumer {
             log.info("Redis cache miss for phone {}. Querying user-school-service...", event.getFromPhone());
             try {
                 String lookupUrl = userSchoolServiceUrl + "/api/teachers/phone/" + event.getFromPhone();
-                
+
                 // Fetch profile synchronously
                 JsonNodeResponse apiResponse = webClient.get()
                         .uri(lookupUrl)
@@ -94,7 +94,8 @@ public class ChatProcessingConsumer {
             WhatsAppMessageSendRequestEvent reply = WhatsAppMessageSendRequestEvent.builder()
                     .toPhone(event.getFromPhone())
                     .messageType("TEXT")
-                    .content("Welcome to Nipun Platform! Your phone number is not registered. Please contact your school administrator to register your account.")
+                    .content(
+                            "Welcome to Nipun Platform! Your phone number is not registered. Please contact your school administrator to register your account.")
                     .tenantId("public")
                     .build();
             kafkaTemplate.send(OUTGOING_TOPIC, event.getFromPhone(), reply);
@@ -103,18 +104,22 @@ public class ChatProcessingConsumer {
 
         // 3. Set Schema/Tenant Context dynamically
         TenantContext.setTenantId(profile.getTenantId());
-        
+
         try {
             // Load or Create Chat Session
-            ChatSession session = chatSessionRepository.findTopByTeacherIdOrderByLastActivityAtDesc(profile.getId())
+            final TeacherProfile finalProfile = profile;
+
+            ChatSession session = chatSessionRepository
+                    .findTopByTeacherIdOrderByLastActivityAtDesc(finalProfile.getId())
                     .orElseGet(() -> {
                         ChatSession newSession = ChatSession.builder()
                                 .id(UUID.randomUUID())
-                                .teacherId(profile.getId())
+                                .teacherId(finalProfile.getId())
                                 .startedAt(LocalDateTime.now())
                                 .lastActivityAt(LocalDateTime.now())
                                 .currentContextNode("WELCOME")
                                 .build();
+
                         return chatSessionRepository.save(newSession);
                     });
 
@@ -136,7 +141,8 @@ public class ChatProcessingConsumer {
 
             // 4. Handle Media Attachments Asynchronously
             if (!"TEXT".equalsIgnoreCase(event.getMessageType())) {
-                log.info("Message contains media attachment ({}). Handing off to media service.", event.getMessageType());
+                log.info("Message contains media attachment ({}). Handing off to media service.",
+                        event.getMessageType());
                 MediaProcessingRequestEvent mediaRequest = MediaProcessingRequestEvent.builder()
                         .mediaId(event.getMediaId())
                         .fromPhone(event.getFromPhone())
@@ -144,7 +150,7 @@ public class ChatProcessingConsumer {
                         .messageType(event.getMessageType())
                         .tenantId(profile.getTenantId())
                         .build();
-                
+
                 kafkaTemplate.send(MEDIA_TOPIC, event.getFromPhone(), mediaRequest);
                 return;
             }
@@ -155,8 +161,7 @@ public class ChatProcessingConsumer {
             AIQueryRequest aiRequest = new AIQueryRequest(
                     event.getContent(),
                     profile.getTenantId(),
-                    profile.getSubjectId()
-            );
+                    profile.getSubjectId());
 
             AIQueryResponse aiResponse = webClient.post()
                     .uri(aiQueryUrl)
@@ -207,8 +212,7 @@ public class ChatProcessingConsumer {
                     profile.getSchoolId().toString(),
                     profile.getId().toString(),
                     "MESSAGE_PROCESSED",
-                    System.currentTimeMillis()
-            );
+                    System.currentTimeMillis());
             kafkaTemplate.send(ANALYTICS_TOPIC, profile.getSchoolId().toString(), analytics);
         } catch (Exception e) {
             log.error("Failed to post analytics metrics", e);

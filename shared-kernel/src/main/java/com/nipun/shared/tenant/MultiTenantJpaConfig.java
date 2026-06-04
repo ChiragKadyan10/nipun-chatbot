@@ -29,7 +29,6 @@ public class MultiTenantJpaConfig {
             CurrentTenantIdentifierResolver currentTenantIdentifierResolver) {
 
         Map<String, Object> jpaProperties = new HashMap<>();
-        jpaProperties.put(Environment.MULTI_TENANT, "SCHEMA");
         jpaProperties.put(Environment.MULTI_TENANT_CONNECTION_PROVIDER, multiTenantConnectionProvider);
         jpaProperties.put(Environment.MULTI_TENANT_IDENTIFIER_RESOLVER, currentTenantIdentifierResolver);
         jpaProperties.put(Environment.DIALECT, "org.hibernate.dialect.PostgreSQLDialect");
