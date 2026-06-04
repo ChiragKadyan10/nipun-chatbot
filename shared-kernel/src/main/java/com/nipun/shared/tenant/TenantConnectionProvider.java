@@ -1,6 +1,8 @@
 package com.nipun.shared.tenant;
 
 import org.hibernate.engine.jdbc.connections.spi.MultiTenantConnectionProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
@@ -8,6 +10,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 
 @Component
+@ConditionalOnClass(DataSource.class)
+@ConditionalOnBean(DataSource.class)
 public class TenantConnectionProvider implements MultiTenantConnectionProvider {
 
     private final DataSource dataSource;
