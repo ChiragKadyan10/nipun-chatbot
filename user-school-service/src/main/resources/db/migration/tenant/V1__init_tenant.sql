@@ -7,6 +7,7 @@ CREATE TABLE teachers (
     role VARCHAR(50) NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     school_id UUID NOT NULL,
+    subject_id UUID,
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
 );
 

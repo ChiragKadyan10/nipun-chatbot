@@ -1,5 +1,6 @@
 package com.nipun.userschool.config;
 
+import org.springframework.core.Ordered;
 import com.nipun.shared.context.TenantServletFilter;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -12,9 +13,9 @@ public class WebConfig {
     public FilterRegistrationBean<TenantServletFilter> tenantFilterRegistration() {
         FilterRegistrationBean<TenantServletFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new TenantServletFilter());
-        registration.addUrlPatterns("/api/teachers/*", "/api/subjects/*");
+        registration.addUrlPatterns("/*");
         registration.setName("tenantServletFilter");
-        registration.setOrder(1);
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return registration;
     }
 }

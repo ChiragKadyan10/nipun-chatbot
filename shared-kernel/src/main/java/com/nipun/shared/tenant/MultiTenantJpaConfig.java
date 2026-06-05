@@ -1,50 +1,28 @@
 package com.nipun.shared.tenant;
 
-import org.hibernate.cfg.Environment;
-import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
-import org.hibernate.engine.jdbc.connections.spi.MultiTenantConnectionProvider;
+import org.hibernate.cfg.AvailableSettings;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernatePropertiesCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.orm.jpa.JpaVendorAdapter;
-import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 
-import javax.sql.DataSource;
-import java.util.HashMap;
 import java.util.Map;
 
 @Configuration
-@ConditionalOnClass(DataSource.class)
-@ConditionalOnBean(DataSource.class)
 public class MultiTenantJpaConfig {
 
     @Bean
-    public JpaVendorAdapter jpaVendorAdapter() {
-        return new HibernateJpaVendorAdapter();
-    }
-
-    @Bean
-    public LocalContainerEntityManagerFactoryBean entityManagerFactory(
-            DataSource dataSource,
-            JpaVendorAdapter jpaVendorAdapter,
-            MultiTenantConnectionProvider multiTenantConnectionProvider,
-            CurrentTenantIdentifierResolver currentTenantIdentifierResolver) {
-
-        Map<String, Object> jpaProperties = new HashMap<>();
-        jpaProperties.put(Environment.MULTI_TENANT_CONNECTION_PROVIDER, multiTenantConnectionProvider);
-        jpaProperties.put(Environment.MULTI_TENANT_IDENTIFIER_RESOLVER, currentTenantIdentifierResolver);
-        jpaProperties.put(Environment.DIALECT, "org.hibernate.dialect.PostgreSQLDialect");
-        jpaProperties.put(Environment.FORMAT_SQL, true);
-        jpaProperties.put(Environment.SHOW_SQL, false);
-
-        LocalContainerEntityManagerFactoryBean em = new LocalContainerEntityManagerFactoryBean();
-        em.setDataSource(dataSource);
-        em.setPackagesToScan("com.nipun");
-        em.setJpaVendorAdapter(jpaVendorAdapter);
-        em.setJpaPropertyMap(jpaProperties);
-
-        return em;
+    @ConditionalOnBean(TenantConnectionProvider.class)
+    public HibernatePropertiesCustomizer hibernatePropertiesCustomizer(
+            TenantConnectionProvider tenantConnectionProvider,
+            TenantSchemaResolver tenantSchemaResolver) {
+        return (Map<String, Object> hibernateProperties) -> {
+            hibernateProperties.put(
+                    AvailableSettings.MULTI_TENANT_CONNECTION_PROVIDER,
+                    tenantConnectionProvider);
+            hibernateProperties.put(
+                    AvailableSettings.MULTI_TENANT_IDENTIFIER_RESOLVER,
+                    tenantSchemaResolver);
+        };
     }
 }

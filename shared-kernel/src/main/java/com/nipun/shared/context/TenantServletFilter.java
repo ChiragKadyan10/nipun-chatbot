@@ -22,6 +22,7 @@ public class TenantServletFilter implements Filter {
                 TenantContext.setTenantId(TenantContext.DEFAULT_TENANT);
             }
         }
+
         try {
             chain.doFilter(request, response);
         } finally {

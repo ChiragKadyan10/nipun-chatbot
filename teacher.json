@@ -1,0 +1,8 @@
+{
+  "name": "Test Teacher",
+  "phoneNumber": "9999999999",
+  "email": "teacher@ghsmasudpur.com",
+  "role": "TEACHER",
+  "active": true,
+  "schoolId": "4f09136b-948a-4374-86c3-4b34c4b3b3fe"
+}
