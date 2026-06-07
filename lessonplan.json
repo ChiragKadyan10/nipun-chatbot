@@ -1,0 +1,9 @@
+{
+  "subjectId": "65b6b54a-90e7-453f-aad5-8121504efc2e",
+  "title": "Introduction to Fractions",
+  "gradeLevel": "6",
+  "term": "Term 1",
+  "objectives": "Students will understand fractions as parts of a whole, identify numerator and denominator, and solve simple fraction problems.",
+  "documentUrl": "mock://lesson-plans/fractions-grade-6.pdf",
+  "qdrantCollectionName": "lesson_plans"
+}
