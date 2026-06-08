@@ -1,5 +1,6 @@
 package com.nipun.whatsapp.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nipun.shared.event.WhatsAppMessageSendRequestEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,14 +20,17 @@ public class WhatsAppMessageSender {
     private final String graphApiToken;
     private final String phoneNumberId;
     private final String serverPort;
+    private final ObjectMapper objectMapper;
 
     public WhatsAppMessageSender(
             WebClient.Builder webClientBuilder,
+            ObjectMapper objectMapper,
             @Value("${whatsapp.mock:true}") boolean isMock,
             @Value("${whatsapp.token:}") String graphApiToken,
             @Value("${whatsapp.phone-number-id:}") String phoneNumberId,
             @Value("${server.port:8084}") String serverPort) {
         this.webClient = webClientBuilder.build();
+        this.objectMapper = objectMapper;
         this.isMock = isMock;
         this.graphApiToken = graphApiToken;
         this.phoneNumberId = phoneNumberId;
@@ -34,13 +38,20 @@ public class WhatsAppMessageSender {
     }
 
     @KafkaListener(topics = "outgoing-messages", groupId = "whatsapp-sender-group")
-    public void handleOutgoingMessage(WhatsAppMessageSendRequestEvent event) {
-        log.info("Consuming outgoing message for recipient: {}", event.getToPhone());
-        
-        if (isMock) {
-            sendMockMessage(event).subscribe();
-        } else {
-            sendMetaMessage(event).subscribe();
+    public void handleOutgoingMessage(String payload) {
+        try {
+            WhatsAppMessageSendRequestEvent event =
+                    objectMapper.readValue(payload, WhatsAppMessageSendRequestEvent.class);
+
+            log.info("Consuming outgoing message for recipient: {}", event.getToPhone());
+
+            if (isMock) {
+                sendMockMessage(event).subscribe();
+            } else {
+                sendMetaMessage(event).subscribe();
+            }
+        } catch (Exception e) {
+            log.error("Failed to process outgoing WhatsApp message payload: {}", payload, e);
         }
     }
 
@@ -62,7 +73,6 @@ public class WhatsAppMessageSender {
         log.info("Sending message via Meta Graph API: recipient={}", event.getToPhone());
         String url = "https://graph.facebook.com/v19.0/" + phoneNumberId + "/messages";
 
-        // Build Meta WhatsApp API payload
         Map<String, Object> body;
         if ("TEXT".equalsIgnoreCase(event.getMessageType())) {
             body = Map.of(
@@ -73,7 +83,6 @@ public class WhatsAppMessageSender {
                     "text", Map.of("preview_url", false, "body", event.getContent())
             );
         } else {
-            // Media attachment payload
             String mediaType = event.getMessageType().toLowerCase();
             body = Map.of(
                     "messaging_product", "whatsapp",
