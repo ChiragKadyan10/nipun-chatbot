@@ -33,6 +33,7 @@ public class ChatProcessingConsumer {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
     private final WebClient webClient;
+    private final ObjectMapper objectMapper;
 
     private static final String OUTGOING_TOPIC = "outgoing-messages";
     private static final String MEDIA_TOPIC = "media-processing";
@@ -45,21 +46,39 @@ public class ChatProcessingConsumer {
     private String aiServiceUrl;
 
     public ChatProcessingConsumer(
-            ChatSessionRepository chatSessionRepository,
-            MessageRepository messageRepository,
-            KafkaTemplate<String, Object> kafkaTemplate,
-            RedisTemplate<String, Object> redisTemplate,
-            WebClient.Builder webClientBuilder) {
-        this.chatSessionRepository = chatSessionRepository;
-        this.messageRepository = messageRepository;
-        this.kafkaTemplate = kafkaTemplate;
-        this.redisTemplate = redisTemplate;
-        this.webClient = webClientBuilder.build();
+        ChatSessionRepository chatSessionRepository,
+        MessageRepository messageRepository,
+        KafkaTemplate<String, Object> kafkaTemplate,
+        RedisTemplate<String, Object> redisTemplate,
+        WebClient.Builder webClientBuilder,
+        ObjectMapper objectMapper) {
+    this.chatSessionRepository = chatSessionRepository;
+    this.messageRepository = messageRepository;
+    this.kafkaTemplate = kafkaTemplate;
+    this.redisTemplate = redisTemplate;
+    this.webClient = webClientBuilder.build();
+    this.objectMapper = objectMapper;
+}
+
+   @KafkaListener(
+        topics = "incoming-messages",
+        groupId = "chat-processor-group-v3",
+        containerFactory = "stringKafkaListenerContainerFactory"
+)
+public void processIncomingMessage(String payload) {
+
+    WhatsAppMessageReceivedEvent event;
+
+    try {
+        event = objectMapper.readValue(payload, WhatsAppMessageReceivedEvent.class);
+    } catch (Exception e) {
+        log.error("Failed to parse incoming WhatsApp message payload: {}", payload, e);
+        return;
     }
 
-    @KafkaListener(topics = "incoming-messages", groupId = "chat-processor-group")
-    public void processIncomingMessage(WhatsAppMessageReceivedEvent event) {
-        log.info("Processing incoming WhatsApp message {} from phone: {}", event.getMessageId(), event.getFromPhone());
+    log.info("Processing incoming WhatsApp message {} from phone: {}",
+            event.getMessageId(),
+            event.getFromPhone());
 
         // 1. Resolve Teacher Profile (Checking Redis Cache first)
         String cacheKey = "teacher:phone:" + event.getFromPhone();
@@ -72,17 +91,26 @@ public class ChatProcessingConsumer {
 
                 // Fetch profile synchronously
                 JsonNodeResponse apiResponse = webClient.get()
-                        .uri(lookupUrl)
-                        .retrieve()
-                        .bodyToMono(JsonNodeResponse.class)
-                        .block(Duration.ofSeconds(3));
+                      .uri(lookupUrl)
+                      .header("X-Tenant-ID", "tenant_124001")
+                      .headers(headers -> headers.setBasicAuth("user", "11e49120-7ec4-4c8d-aa2d-1a69790c860e"))
+                      .retrieve()
+                      .bodyToMono(JsonNodeResponse.class)
+                      .block(Duration.ofSeconds(10));
 
                 if (apiResponse != null && apiResponse.isSuccess() && apiResponse.getData() != null) {
-                    profile = apiResponse.getData();
-                    // Cache in Redis for 1 Hour to reduce API call overhead
-                    redisTemplate.opsForValue().set(cacheKey, profile, Duration.ofHours(1));
-                    log.info("Successfully fetched and cached teacher profile: {}", profile.getName());
-                }
+    profile = apiResponse.getData();
+
+    if (profile.getTenantId() != null &&
+        !profile.getTenantId().startsWith("tenant_")) {
+        profile.setTenantId("tenant_" + profile.getTenantId());
+    }
+
+    // Cache in Redis for 1 Hour to reduce API call overhead
+    redisTemplate.opsForValue().set(cacheKey, profile, Duration.ofHours(1));
+
+    log.info("Successfully fetched and cached teacher profile: {}", profile.getName());
+}
             } catch (Exception e) {
                 log.error("Failed to query user-school-service for phone: {}", event.getFromPhone(), e);
             }
