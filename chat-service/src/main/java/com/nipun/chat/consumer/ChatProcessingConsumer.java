@@ -45,6 +45,18 @@ public class ChatProcessingConsumer {
     @Value("${services.ai.url:http://localhost:8086}")
     private String aiServiceUrl;
 
+    @Value("${services.user-school.username}")
+    private String userSchoolServiceUsername;
+
+    @Value("${services.user-school.password}")
+    private String userSchoolServicePassword;
+
+    @Value("${services.ai.username}")
+    private String aiServiceUsername;
+
+    @Value("${services.ai.password}")
+    private String aiServicePassword;
+
     public ChatProcessingConsumer(
         ChatSessionRepository chatSessionRepository,
         MessageRepository messageRepository,
@@ -93,7 +105,7 @@ public void processIncomingMessage(String payload) {
                 JsonNodeResponse apiResponse = webClient.get()
                       .uri(lookupUrl)
                       .header("X-Tenant-ID", "tenant_124001")
-                      .headers(headers -> headers.setBasicAuth("user", "11e49120-7ec4-4c8d-aa2d-1a69790c860e"))
+                      .headers(headers -> headers.setBasicAuth(userSchoolServiceUsername, userSchoolServicePassword))
                       .retrieve()
                       .bodyToMono(JsonNodeResponse.class)
                       .block(Duration.ofSeconds(10));
@@ -193,6 +205,7 @@ public void processIncomingMessage(String payload) {
 
             AIQueryResponse aiResponse = webClient.post()
                     .uri(aiQueryUrl)
+                    .headers(headers -> headers.setBasicAuth(aiServiceUsername, aiServicePassword))
                     .bodyValue(aiRequest)
                     .retrieve()
                     .bodyToMono(AIQueryResponse.class)

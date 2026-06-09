@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: user-school-service
+  security:
+    user:
+      name: internal
+      password: internal123
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/nipun_db}
     username: ${DATABASE_USERNAME:postgres}

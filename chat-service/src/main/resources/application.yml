@@ -38,5 +38,9 @@ spring:
 services:
   user-school:
     url: ${USER_SCHOOL_SERVICE_URL:http://localhost:8082}
+    username: ${USER_SCHOOL_SERVICE_USERNAME:internal}
+    password: ${USER_SCHOOL_SERVICE_PASSWORD:internal123}
   ai:
     url: ${AI_SERVICE_URL:http://localhost:8086}
+    username: ${AI_SERVICE_USERNAME:internal}
+    password: ${AI_SERVICE_PASSWORD:internal123}
