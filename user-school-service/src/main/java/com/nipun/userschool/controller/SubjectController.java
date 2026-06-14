@@ -1,5 +1,6 @@
 package com.nipun.userschool.controller;
 
+import com.nipun.shared.context.TenantContext;
 import com.nipun.shared.dto.ApiResponse;
 import com.nipun.userschool.entity.Subject;
 import com.nipun.userschool.service.SubjectService;
@@ -18,26 +19,61 @@ public class SubjectController {
     private final SubjectService subjectService;
 
     @PostMapping
-    public ResponseEntity<ApiResponse<Subject>> createSubject(@RequestBody Subject subject) {
-        Subject savedSubject = subjectService.saveSubject(subject);
-        return ResponseEntity.ok(ApiResponse.success("Subject saved successfully", savedSubject));
+    public ResponseEntity<ApiResponse<Subject>> createSubject(
+            @RequestHeader(value = "X-Tenant-ID", required = false) String tenantId,
+            @RequestBody Subject subject) {
+
+        TenantContext.setTenantId(tenantId != null ? tenantId : TenantContext.DEFAULT_TENANT);
+
+        try {
+            Subject savedSubject = subjectService.saveSubject(subject);
+            return ResponseEntity.ok(ApiResponse.success("Subject saved successfully", savedSubject));
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Subject>>> getAllSubjects() {
-        List<Subject> subjects = subjectService.getAllSubjects();
-        return ResponseEntity.ok(ApiResponse.success(subjects));
+    public ResponseEntity<ApiResponse<List<Subject>>> getAllSubjects(
+            @RequestHeader(value = "X-Tenant-ID", required = false) String tenantId) {
+
+        TenantContext.setTenantId(tenantId != null ? tenantId : TenantContext.DEFAULT_TENANT);
+
+        try {
+            List<Subject> subjects = subjectService.getAllSubjects();
+            return ResponseEntity.ok(ApiResponse.success(subjects));
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Subject>> getSubjectById(@PathVariable UUID id) {
-        Subject subject = subjectService.getSubjectById(id);
-        return ResponseEntity.ok(ApiResponse.success(subject));
+    public ResponseEntity<ApiResponse<Subject>> getSubjectById(
+            @RequestHeader(value = "X-Tenant-ID", required = false) String tenantId,
+            @PathVariable UUID id) {
+
+        TenantContext.setTenantId(tenantId != null ? tenantId : TenantContext.DEFAULT_TENANT);
+
+        try {
+            Subject subject = subjectService.getSubjectById(id);
+            return ResponseEntity.ok(ApiResponse.success(subject));
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     @GetMapping("/code/{code}")
-    public ResponseEntity<ApiResponse<Subject>> getSubjectByCode(@PathVariable String code) {
-        Subject subject = subjectService.getSubjectByCode(code);
-        return ResponseEntity.ok(ApiResponse.success(subject));
+    public ResponseEntity<ApiResponse<Subject>> getSubjectByCode(
+            @RequestHeader(value = "X-Tenant-ID", required = false) String tenantId,
+            @PathVariable String code) {
+
+        TenantContext.setTenantId(tenantId != null ? tenantId : TenantContext.DEFAULT_TENANT);
+
+        try {
+            Subject subject = subjectService.getSubjectByCode(code);
+            return ResponseEntity.ok(ApiResponse.success(subject));
+        } finally {
+            TenantContext.clear();
+        }
     }
 }
