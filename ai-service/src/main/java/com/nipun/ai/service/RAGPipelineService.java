@@ -17,15 +17,14 @@ import dev.langchain4j.store.embedding.filter.Filter;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.parser.AutoDetectParser;
-import org.apache.tika.parser.ParseContext;
-import org.apache.tika.sax.BodyContentHandler;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.Loader;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -45,9 +44,8 @@ public class RAGPipelineService {
         log.info("Processing indexing for lesson plan: {} under tenant: {}", event.getTitle(), event.getTenantId());
 
         try {
-            // Retrieve document binary stream (for demo/test, we parse a mock text layout)
-            String rawTextContent = simulateDownloadAndParse(event.getDocumentUrl(), event.getTitle());
-
+                // Parse the lesson plan document text from the source URL.
+                String rawTextContent = parseDocumentText(event.getDocumentUrl(), event.getTitle());
             // Convert to LangChain4j Document
             Document document = Document.from(rawTextContent);
 
@@ -132,25 +130,48 @@ public class RAGPipelineService {
         return response.content().text();
     }
 
-    private String simulateDownloadAndParse(String documentUrl, String title) throws Exception {
-        // Here, we simulate Apache Tika parsing an incoming stream (e.g. PDF/DOCX
-        // bytes)
-        String mockDocumentContent = "Lesson Plan Title: " + title + "\n" +
-                "Topic overview: This curriculum node explains standard lesson flows, activities, and evaluation methods.\n"
-                +
-                "Core Objectives: Students will comprehend basic concepts, engage in interactive group activities, and write homework assignments.\n"
-                +
-                "Activity Details: Conduct a 15-minute group quiz where students solve real-world scenario questions.\n"
-                +
-                "Homework details: Solve exercises 1 through 10 in the curriculum guide.";
-
-        try (InputStream inputStream = new ByteArrayInputStream(mockDocumentContent.getBytes(StandardCharsets.UTF_8))) {
-            AutoDetectParser parser = new AutoDetectParser();
-            BodyContentHandler handler = new BodyContentHandler(-1);
-            Metadata metadata = new Metadata();
-            ParseContext context = new ParseContext();
-            parser.parse(inputStream, handler, metadata, context);
-            return handler.toString();
+    private String parseDocumentText(String documentUrl, String title) {
+        if (documentUrl == null || documentUrl.isBlank()) {
+            log.error("Document URL is missing for lesson plan title={}. Falling back to mock content.", title);
+            return getMockDocumentText(title);
         }
+
+        final String prefix = "local://uploads/lesson-plans/";
+        if (!documentUrl.startsWith(prefix)) {
+            log.error("Unsupported documentUrl scheme for lesson plan title={}: {}. Falling back to mock content.", title, documentUrl);
+            return getMockDocumentText(title);
+        }
+
+        String filename = documentUrl.substring(prefix.length());
+        Path pdfPath = Paths.get("..", "curriculum-service", "uploads", "lesson-plans", filename).normalize();
+
+        if (!Files.exists(pdfPath) || !Files.isRegularFile(pdfPath)) {
+            log.error("PDF file not found for lesson plan title={} at path={}. Falling back to mock content.", title, pdfPath);
+            return getMockDocumentText(title);
+        }
+
+        try (PDDocument document = Loader.loadPDF(pdfPath.toFile())) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            String text = stripper.getText(document);
+
+            if (text == null || text.isBlank()) {
+               log.warn("PDF extraction returned blank text for lesson plan title={}. Falling back to mock content.", title);
+                return getMockDocumentText(title);
+        }
+
+            log.info("Extracted {} characters from PDF for lesson plan title={}", text.length(), title);
+            return text;
+        } catch (Exception e) {
+            log.error("Failed to extract PDF text for lesson plan title={}. Falling back to mock content.", title, e);
+            return getMockDocumentText(title);
+        }
+    }
+
+    private String getMockDocumentText(String title) {
+        return "Lesson Plan Title: " + title + "\n" +
+                "Topic overview: This curriculum node explains standard lesson flows, activities, and evaluation methods.\n" +
+                "Core Objectives: Students will comprehend basic concepts, engage in interactive group activities, and write homework assignments.\n" +
+                "Activity Details: Conduct a 15-minute group quiz where students solve real-world scenario questions.\n" +
+                "Homework details: Solve exercises 1 through 10 in the curriculum guide.";
     }
 }
