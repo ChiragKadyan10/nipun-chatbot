@@ -49,4 +49,9 @@ public class CurriculumService {
     public List<LessonPlan> getLessonPlansBySubject(UUID subjectId) {
         return lessonPlanRepository.findBySubjectId(subjectId);
     }
+    public LessonPlan getLessonPlanById(UUID id) {
+        return lessonPlanRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Lesson plan not found: " + id));
+  }
+
 }
