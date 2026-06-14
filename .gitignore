@@ -4,3 +4,6 @@ target/
 *.log
 *.class
 test-data/
+# Local uploaded lesson plan files
+curriculum-service/uploads/
+Grade2TGMath.pdf
