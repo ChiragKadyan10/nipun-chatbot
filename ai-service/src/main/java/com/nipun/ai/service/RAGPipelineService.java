@@ -106,14 +106,25 @@ public class RAGPipelineService {
                 .minScore(0.5)
                 .build();
 
-        EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
-        List<EmbeddingMatch<TextSegment>> matches = searchResult.matches();
+        List<EmbeddingMatch<TextSegment>> matches = new ArrayList<>();
+
+        try {
+            EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
+            matches = searchResult.matches();
+        } catch (Exception e) {
+            log.warn("Could not search Qdrant lesson_plans collection. Falling back to generic teaching assistant response.", e);
+        }
 
         String context = matches.stream()
                 .map(match -> match.embedded().text())
                 .collect(Collectors.joining("\n---\n"));
 
-        log.info("Found {} relevant curriculum context segments in Qdrant", matches.size());
+        if (context == null || context.isBlank()) {
+            context = "No indexed lesson plan context is available yet for this tenant and subject. " +
+            "Provide a helpful general teaching response based on the teacher's question.";
+        }
+
+         log.info("Found {} relevant curriculum context segments in Qdrant", matches.size());
 
         // Construct context-enriched Prompt
         String systemPrompt = "You are a professional educational teaching assistant. Use the following context from the school curriculum and lesson plans to answer the teacher's question accurately.\n"
