@@ -114,7 +114,9 @@ public class WhatsAppWebhookController {
                                     .build();
 
                             log.info("Parsed incoming WhatsApp message {} of type {}", messageId, type);
-                            kafkaTemplate.send(INCOMING_TOPIC, fromPhone, event);
+
+                            String payload = objectMapper.writeValueAsString(event);
+                            kafkaTemplate.send(INCOMING_TOPIC, fromPhone, payload);
                         }
                     }
                 }

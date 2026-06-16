@@ -1,5 +1,6 @@
 package com.nipun.whatsapp.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nipun.shared.dto.ApiResponse;
 import com.nipun.shared.event.WhatsAppMessageReceivedEvent;
 import com.nipun.shared.event.WhatsAppMessageSendRequestEvent;
@@ -18,15 +19,19 @@ import java.util.UUID;
 public class WhatsAppMockController {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper;
     private final List<WhatsAppMessageSendRequestEvent> outbox = Collections.synchronizedList(new ArrayList<>());
 
     private static final String INCOMING_TOPIC = "incoming-messages";
 
-    public WhatsAppMockController(KafkaTemplate<String, Object> kafkaTemplate) {
+    public WhatsAppMockController(
+            KafkaTemplate<String, Object> kafkaTemplate,
+            ObjectMapper objectMapper
+    ) {
         this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
     }
 
-    // Trigger an incoming mock message (text or media) into Kafka stream
     @PostMapping("/trigger")
     public ApiResponse<String> triggerMockIncoming(
             @RequestParam String fromPhone,
@@ -44,12 +49,17 @@ public class WhatsAppMockController {
                 .timestamp(System.currentTimeMillis() / 1000)
                 .build();
 
-        kafkaTemplate.send(INCOMING_TOPIC, fromPhone, event);
+        try {
+            String payload = objectMapper.writeValueAsString(event);
+            kafkaTemplate.send(INCOMING_TOPIC, fromPhone, payload);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to publish mock WhatsApp message", e);
+        }
+
         log.info("Mock incoming message triggered to Kafka: {}", event);
         return ApiResponse.success("Mock message published to " + INCOMING_TOPIC, event.getMessageId());
     }
 
-    // Record outbound WhatsApp request sent to the mock gateway
     @PostMapping("/send")
     public ApiResponse<String> recordMockOutbound(@RequestBody WhatsAppMessageSendRequestEvent requestEvent) {
         log.info("Received outbound mock send request: {}", requestEvent);
@@ -57,13 +67,11 @@ public class WhatsAppMockController {
         return ApiResponse.success("Message recorded in mock gateway outbox", "SUCCESS");
     }
 
-    // Get all messages sent to the mock outbox
     @GetMapping("/outbox")
     public ApiResponse<List<WhatsAppMessageSendRequestEvent>> getOutbox() {
         return ApiResponse.success("Current Mock Outbox list", new ArrayList<>(outbox));
     }
 
-    // Clear mock outbox
     @DeleteMapping("/outbox")
     public ApiResponse<String> clearOutbox() {
         outbox.clear();
