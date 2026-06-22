@@ -209,7 +209,8 @@ public void processIncomingMessage(String payload) {
                     .bodyValue(aiRequest)
                     .retrieve()
                     .bodyToMono(AIQueryResponse.class)
-                    .block(Duration.ofSeconds(10));
+                    
+                    .block(Duration.ofSeconds(60));
 
             String aiAnswer = "Sorry, I could not retrieve details from the curriculum at this time.";
             if (aiResponse != null && aiResponse.isSuccess()) {

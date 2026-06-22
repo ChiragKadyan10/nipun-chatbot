@@ -17,11 +17,15 @@ import dev.langchain4j.store.embedding.filter.Filter;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
+import net.sourceforge.tess4j.Tesseract;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.stereotype.Service;
 
+import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -39,23 +43,22 @@ public class RAGPipelineService {
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final ChatLanguageModel chatLanguageModel;
 
-    // Index an uploaded lesson plan document
+    private static final int OCR_MIN_TEXT_LENGTH = 500;
+    private static final float OCR_RENDER_DPI = 200f;
+
     public void indexLessonPlan(LessonPlanUploadedEvent event) {
         log.info("Processing indexing for lesson plan: {} under tenant: {}", event.getTitle(), event.getTenantId());
 
         try {
-                // Parse the lesson plan document text from the source URL.
-                String rawTextContent = parseDocumentText(event.getDocumentUrl(), event.getTitle());
-            // Convert to LangChain4j Document
+            String rawTextContent = parseDocumentText(event.getDocumentUrl(), event.getTitle());
+
             Document document = Document.from(rawTextContent);
 
-            // Chunk Document (500 characters chunk with 50 characters overlap)
             DocumentSplitter splitter = DocumentSplitters.recursive(500, 50);
             List<TextSegment> segments = splitter.split(document);
 
             log.info("Split lesson plan into {} text segments", segments.size());
 
-            // Enrich Segments with metadata to enable tenant boundary filtering
             List<TextSegment> enrichedSegments = new ArrayList<>();
             List<Embedding> embeddings = new ArrayList<>();
 
@@ -70,14 +73,13 @@ public class RAGPipelineService {
                 TextSegment enriched = TextSegment.from(
                         segment.text(),
                         dev.langchain4j.data.document.Metadata.from(metadata));
+
                 enrichedSegments.add(enriched);
 
-                // Embed
                 Embedding embedding = embeddingModel.embed(enriched).content();
                 embeddings.add(embedding);
             }
 
-            // Store in Qdrant Vector database
             embeddingStore.addAll(embeddings, enrichedSegments);
             log.info("Successfully indexed {} embeddings in Qdrant for {}", enrichedSegments.size(), event.getTitle());
 
@@ -86,19 +88,15 @@ public class RAGPipelineService {
         }
     }
 
-    // Retrieve context and invoke LLM
     public String askTeacherAssistant(String query, String tenantId, UUID subjectId) {
         log.info("Answering teacher assistant query: '{}' for school tenant: {}", query, tenantId);
 
-        // Compute query embedding
         Embedding queryEmbedding = embeddingModel.embed(query).content();
 
-        // Build metadata filters (strict security boundaries)
         Filter tenantFilter = MetadataFilterBuilder.metadataKey("tenantId").isEqualTo(tenantId);
         Filter subjectFilter = MetadataFilterBuilder.metadataKey("subjectId").isEqualTo(subjectId.toString());
         Filter combinedFilter = Filter.and(tenantFilter, subjectFilter);
 
-        // Fetch top-3 matches
         EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
                 .filter(combinedFilter)
@@ -121,12 +119,11 @@ public class RAGPipelineService {
 
         if (context == null || context.isBlank()) {
             context = "No indexed lesson plan context is available yet for this tenant and subject. " +
-            "Provide a helpful general teaching response based on the teacher's question.";
+                    "Provide a helpful general teaching response based on the teacher's question.";
         }
 
-         log.info("Found {} relevant curriculum context segments in Qdrant", matches.size());
+        log.info("Found {} relevant curriculum context segments in Qdrant", matches.size());
 
-        // Construct context-enriched Prompt
         String systemPrompt = "You are a professional educational teaching assistant. Use the following context from the school curriculum and lesson plans to answer the teacher's question accurately.\n"
                 +
                 "Context:\n" +
@@ -134,7 +131,6 @@ public class RAGPipelineService {
                 "Teacher's Question: " + query + "\n\n" +
                 "Provide detailed teaching methodologies, activity suggestions, homework ideas, or conceptual guidance.";
 
-        // Invoke GPT LLM
         Response<dev.langchain4j.data.message.AiMessage> response = chatLanguageModel.generate(
                 List.of(dev.langchain4j.data.message.UserMessage.from(systemPrompt)));
 
@@ -165,16 +161,70 @@ public class RAGPipelineService {
             PDFTextStripper stripper = new PDFTextStripper();
             String text = stripper.getText(document);
 
-            if (text == null || text.isBlank()) {
-               log.warn("PDF extraction returned blank text for lesson plan title={}. Falling back to mock content.", title);
-                return getMockDocumentText(title);
-        }
+            if (text != null && text.trim().length() >= OCR_MIN_TEXT_LENGTH) {
+                log.info("Extracted {} characters from text-based PDF for lesson plan title={}", text.length(), title);
+                return text;
+            }
 
-            log.info("Extracted {} characters from PDF for lesson plan title={}", text.length(), title);
-            return text;
+            log.warn(
+                    "PDF text extraction returned only {} characters for lesson plan title={}. Trying OCR fallback.",
+                    text == null ? 0 : text.trim().length(),
+                    title
+            );
+
+            String ocrText = extractTextUsingOcr(document, title);
+
+            if (ocrText != null && !ocrText.isBlank()) {
+                log.info("Extracted {} characters using OCR for lesson plan title={}", ocrText.length(), title);
+                return ocrText;
+            }
+
+            log.warn("OCR fallback also returned blank text for lesson plan title={}. Falling back to mock content.", title);
+            return getMockDocumentText(title);
+
         } catch (Exception e) {
             log.error("Failed to extract PDF text for lesson plan title={}. Falling back to mock content.", title, e);
             return getMockDocumentText(title);
+        }
+    }
+
+    private String extractTextUsingOcr(PDDocument document, String title) {
+        try {
+            Tesseract tesseract = new Tesseract();
+
+            String tessdataPath = System.getenv("TESSDATA_PREFIX");
+            if (tessdataPath != null && !tessdataPath.isBlank()) {
+                tesseract.setDatapath(tessdataPath);
+            }
+
+            tesseract.setLanguage("hin+eng");
+
+            PDFRenderer renderer = new PDFRenderer(document);
+            StringBuilder extractedText = new StringBuilder();
+
+            int pageCount = document.getNumberOfPages();
+            log.info("Starting OCR for lesson plan title={} with {} pages", title, pageCount);
+
+            for (int pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+                BufferedImage image = renderer.renderImageWithDPI(pageIndex, OCR_RENDER_DPI, ImageType.RGB);
+                String pageText = tesseract.doOCR(image);
+
+                if (pageText != null && !pageText.isBlank()) {
+                    extractedText
+                            .append("\n\n--- OCR Page ")
+                            .append(pageIndex + 1)
+                            .append(" ---\n")
+                            .append(pageText.trim());
+                }
+
+                log.info("OCR completed for page {}/{} of lesson plan title={}", pageIndex + 1, pageCount, title);
+            }
+
+            return extractedText.toString().trim();
+
+        } catch (Exception e) {
+            log.error("OCR extraction failed for lesson plan title={}", title, e);
+            return "";
         }
     }
 
