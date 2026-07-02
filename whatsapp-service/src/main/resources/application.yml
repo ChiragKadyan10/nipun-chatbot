@@ -12,4 +12,4 @@ whatsapp:
   app-secret: ${WHATSAPP_APP_SECRET:nipun_app_secret}
   token: ${WHATSAPP_GRAPH_TOKEN:}
   phone-number-id: ${WHATSAPP_PHONE_ID:}
-  mock: true
+  mock: ${WHATSAPP_MOCK:true}
